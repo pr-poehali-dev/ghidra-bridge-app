@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,6 +10,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import Icon from "@/components/ui/icon";
 import { toast } from "sonner";
+import FunctionVisualizer from "@/components/FunctionVisualizer";
 
 interface Message {
   id: string;
@@ -31,29 +32,49 @@ const Index = () => {
   const [openRouterKey, setOpenRouterKey] = useState("");
   const [selectedModel, setSelectedModel] = useState("");
   const [isConnected, setIsConnected] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "1",
-      role: "system",
-      content: "Ghidra AI Bridge готов к работе. Подключитесь к Ghidra и выберите AI-модель для начала анализа.",
-      timestamp: new Date(),
-    },
-  ]);
+  const [messages, setMessages] = useState<Message[]>(() => {
+    const saved = localStorage.getItem('ghidra-messages');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return parsed.map((m: any) => ({
+        ...m,
+        timestamp: new Date(m.timestamp)
+      }));
+    }
+    return [
+      {
+        id: "1",
+        role: "system",
+        content: "Ghidra AI Bridge готов к работе. Подключитесь к Ghidra и выберите AI-модель для начала анализа.",
+        timestamp: new Date(),
+      },
+    ];
+  });
   const [inputMessage, setInputMessage] = useState("");
-  const [projects, setProjects] = useState<Project[]>([
-    {
-      id: "1",
-      name: "malware_sample_2024",
-      path: "C:\\ghidra_projects\\malware_sample_2024",
-      lastOpened: new Date("2024-11-20"),
-    },
-    {
-      id: "2",
-      name: "firmware_analysis",
-      path: "C:\\ghidra_projects\\firmware_analysis",
-      lastOpened: new Date("2024-11-18"),
-    },
-  ]);
+  const [projects, setProjects] = useState<Project[]>(() => {
+    const saved = localStorage.getItem('ghidra-projects');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return parsed.map((p: any) => ({
+        ...p,
+        lastOpened: new Date(p.lastOpened)
+      }));
+    }
+    return [
+      {
+        id: "1",
+        name: "malware_sample_2024",
+        path: "C:\\ghidra_projects\\malware_sample_2024",
+        lastOpened: new Date("2024-11-20"),
+      },
+      {
+        id: "2",
+        name: "firmware_analysis",
+        path: "C:\\ghidra_projects\\firmware_analysis",
+        lastOpened: new Date("2024-11-18"),
+      },
+    ];
+  });
 
   const aiModels = [
     { id: "anthropic/claude-3.5-sonnet", name: "Claude 3.5 Sonnet", provider: "Anthropic" },
@@ -83,6 +104,47 @@ const Index = () => {
   const handleDisconnect = () => {
     setIsConnected(false);
     toast.info("Отключено от Ghidra Bridge");
+  };
+
+  useEffect(() => {
+    localStorage.setItem('ghidra-messages', JSON.stringify(messages));
+  }, [messages]);
+
+  useEffect(() => {
+    localStorage.setItem('ghidra-projects', JSON.stringify(projects));
+  }, [projects]);
+
+  const handleExportChat = () => {
+    const exportData = {
+      exportDate: new Date().toISOString(),
+      model: selectedModel,
+      messages: messages.map(m => ({
+        role: m.role,
+        content: m.content,
+        timestamp: m.timestamp.toISOString()
+      }))
+    };
+    
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `ghidra-chat-${Date.now()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast.success('Диалог экспортирован');
+  };
+
+  const handleClearHistory = () => {
+    setMessages([{
+      id: Date.now().toString(),
+      role: "system",
+      content: "История очищена. Начните новый сеанс анализа.",
+      timestamp: new Date(),
+    }]);
+    toast.info('История диалогов очищена');
   };
 
   const handleSendMessage = () => {
@@ -149,11 +211,25 @@ const Index = () => {
           <div className="lg:col-span-2 space-y-6">
             <Card className="animate-fade-in">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Icon name="MessageSquare" size={20} />
-                  Диалог с дизассемблером
-                </CardTitle>
-                <CardDescription>Задавайте вопросы о бинарном файле и получайте анализ от AI</CardDescription>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <Icon name="MessageSquare" size={20} />
+                      Диалог с дизассемблером
+                    </CardTitle>
+                    <CardDescription>Задавайте вопросы о бинарном файле и получайте анализ от AI</CardDescription>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={handleExportChat}>
+                      <Icon name="Download" size={16} className="mr-2" />
+                      Экспорт
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={handleClearHistory}>
+                      <Icon name="Trash2" size={16} className="mr-2" />
+                      Очистить
+                    </Button>
+                  </div>
+                </div>
               </CardHeader>
               <CardContent className="space-y-4">
                 <ScrollArea className="h-[500px] pr-4">
@@ -217,6 +293,8 @@ const Index = () => {
                 </div>
               </CardContent>
             </Card>
+
+            <FunctionVisualizer />
           </div>
 
           <div className="space-y-6">
