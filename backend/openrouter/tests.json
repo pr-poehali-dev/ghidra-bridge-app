@@ -1,0 +1,23 @@
+{
+  "tests": [
+    {
+      "name": "Test OpenRouter API proxy",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "model": "anthropic/claude-3.5-sonnet",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Hello, test message"
+          }
+        ]
+      },
+      "expectedStatus": 200,
+      "expectedBody": {
+        "choices": "array"
+      },
+      "bodyMatcher": "partial"
+    }
+  ]
+}

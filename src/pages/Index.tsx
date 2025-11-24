@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,6 +51,8 @@ const Index = () => {
     ];
   });
   const [inputMessage, setInputMessage] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const [projects, setProjects] = useState<Project[]>(() => {
     const saved = localStorage.getItem('ghidra-projects');
     if (saved) {
@@ -83,22 +85,39 @@ const Index = () => {
     { id: "google/gemini-pro-1.5", name: "Gemini Pro 1.5", provider: "Google" },
   ];
 
-  const handleConnect = () => {
+  const handleConnect = async () => {
     if (!ghidraBridgeHost || !ghidraBridgePort) {
       toast.error("Заполните все поля подключения");
       return;
     }
-    setIsConnected(true);
-    toast.success("Успешно подключено к Ghidra Bridge");
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: Date.now().toString(),
-        role: "system",
-        content: `Подключено к Ghidra Bridge на ${ghidraBridgeHost}:${ghidraBridgePort}`,
-        timestamp: new Date(),
-      },
-    ]);
+
+    try {
+      const response = await fetch('https://functions.poehali.dev/51ba8c1e-181e-42d4-bb06-4fc916f424c1', {
+        method: 'GET'
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to connect');
+      }
+
+      const data = await response.json();
+      if (data.status === 'ready') {
+        setIsConnected(true);
+        toast.success("Успешно подключено к Ghidra Bridge");
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: Date.now().toString(),
+            role: "system",
+            content: `Подключено к Ghidra Bridge на ${ghidraBridgeHost}:${ghidraBridgePort}. Статус: ${data.message}`,
+            timestamp: new Date(),
+          },
+        ]);
+      }
+    } catch (error) {
+      toast.error("Не удалось подключиться к Ghidra Bridge");
+      console.error('Connection error:', error);
+    }
   };
 
   const handleDisconnect = () => {
@@ -147,7 +166,7 @@ const Index = () => {
     toast.info('История диалогов очищена');
   };
 
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     if (!inputMessage.trim()) return;
     if (!isConnected) {
       toast.error("Сначала подключитесь к Ghidra Bridge");
@@ -167,16 +186,56 @@ const Index = () => {
 
     setMessages((prev) => [...prev, userMessage]);
     setInputMessage("");
+    setIsLoading(true);
 
-    setTimeout(() => {
+    try {
+      const response = await fetch('https://functions.poehali.dev/f56d59e2-f820-41b0-a1ec-aff7358cae82', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: selectedModel,
+          messages: [
+            {
+              role: 'system',
+              content: 'Ты - эксперт по реверс-инжинирингу и анализу бинарных файлов. Помогаешь анализировать код из дизассемблера Ghidra. Отвечай кратко и профессионально.'
+            },
+            ...messages.filter(m => m.role !== 'system').map(m => ({
+              role: m.role,
+              content: m.content
+            })),
+            {
+              role: 'user',
+              content: inputMessage
+            }
+          ]
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Request failed');
+      }
+
+      const data = await response.json();
       const aiResponse: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
-        content: `Анализирую запрос: "${inputMessage}". В текущем бинарном файле обнаружено 3 функции с подозрительными паттернами. Функция sub_401000 содержит обфусцированный код и вызовы API для работы с сетью. Рекомендую исследовать строки и импорты подробнее.`,
+        content: data.choices[0].message.content,
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, aiResponse]);
-    }, 1500);
+      
+      setTimeout(() => {
+        scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, 100);
+    } catch (error: any) {
+      toast.error(error.message || 'Ошибка при обращении к AI');
+      console.error('OpenRouter error:', error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -271,6 +330,17 @@ const Index = () => {
                         )}
                       </div>
                     ))}
+                    {isLoading && (
+                      <div className="flex gap-3 justify-start animate-scale-in">
+                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                          <Icon name="Bot" size={16} className="text-primary animate-pulse" />
+                        </div>
+                        <div className="bg-card border border-border p-4 rounded-lg">
+                          <p className="text-sm text-muted-foreground">Анализирую...</p>
+                        </div>
+                      </div>
+                    )}
+                    <div ref={scrollRef} />
                   </div>
                 </ScrollArea>
 
@@ -287,8 +357,8 @@ const Index = () => {
                     }}
                     className="min-h-[60px]"
                   />
-                  <Button onClick={handleSendMessage} size="lg" className="px-6">
-                    <Icon name="Send" size={20} />
+                  <Button onClick={handleSendMessage} size="lg" className="px-6" disabled={isLoading}>
+                    <Icon name={isLoading ? "Loader2" : "Send"} size={20} className={isLoading ? "animate-spin" : ""} />
                   </Button>
                 </div>
               </CardContent>

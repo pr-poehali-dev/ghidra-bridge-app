@@ -1,0 +1,29 @@
+{
+  "tests": [
+    {
+      "name": "Test Ghidra Bridge status",
+      "method": "GET",
+      "path": "/",
+      "expectedStatus": 200,
+      "expectedBody": {
+        "status": "ready"
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Test Ghidra command execution",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "command": "getFunctions",
+        "params": {}
+      },
+      "expectedStatus": 200,
+      "expectedBody": {
+        "success": true,
+        "command": "getFunctions"
+      },
+      "bodyMatcher": "partial"
+    }
+  ]
+}
